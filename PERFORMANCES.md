@@ -27,10 +27,17 @@ quand `COE_STDOUT_TO_STDERR` est défini. `coe fps 30` calcule ensuite les FPS m
 | `perf-lumen` | Lumen (éclairage global + reflets) coupé | 58,2 | 17,2 ms |
 | **`fluide`** | effets + FSR 4 → DLSS/TSR + reflets en espace écran + Nanite allégé + synchro coupée | **57,1** | 17,4 ms |
 | **`fps-max`** | `fluide` + éclairage global en espace écran | **66,7** | 14,7 ms |
+| **`beau`** | tout en Épique, 75 % de résolution interne, DLSS → MetalFX/TSR, flou de mouvement coupé | **30,7** | 32,6 ms |
+| `beau` avec ombres en Élevé | idem, ombres un cran en dessous | 28,2* | 32,6 ms |
 | `perf-plancher` (diagnostic) | tout coupé, Nanite compris : image dégradée | 77,0 | 13,0 ms |
 
 À titre de comparaison, le **M1 Max** (GPU 32 cœurs, préréglage Élevé, sans Nanite possible)
 tournait à 32-36 FPS au même endroit, avec 28-30 ms de GPU par image.
+
+\* mesure perturbée : le joueur s'est déplacé pendant la mesure.
+
+Avec `beau`, le GPU varie selon la vue : ~27 ms (37 FPS) dans les vues légères, jusqu'à ~47 ms
+(21 FPS) dans les plus chargées. La synchro à 120 Hz cale l'image sur 30 FPS (4 rafraîchissements).
 
 ## Ce qu'on en retient
 
