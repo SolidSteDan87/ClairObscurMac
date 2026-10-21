@@ -19,6 +19,8 @@ Testé sur macOS 27.0.1 : MacBook Pro **M1 Max** et **M2 Max**.
 | `scripts/import-steam-registry.py` | reprend la connexion Steam d'un ancien environnement Wine |
 | `scripts/exporter.sh` | copie l'installation complète vers un disque externe (pour un autre Mac) |
 | `scripts/analyse-video.sh` | découpe une vidéo de jeu en images pour repérer les bugs graphiques |
+| `scripts/make-dmg.sh`, `packaging/` | fabrique le DMG à partager (app + Lisez-moi + licences) |
+| `scripts/preparer-transfert.sh` | met son jeu et sa session Steam dans une image chiffrée, pour un autre Mac |
 | `scripts/bench-m2.sh` | mesure les FPS d'un profil sur un autre Mac en SSH (relance, attente, 30 s de mesure) |
 | `PERFORMANCES.md` | toutes les mesures de FPS et ce qu'on en retient |
 
@@ -56,6 +58,27 @@ scripts/coe play --env D3DM_MTL4=0      # essayer une option de D3DMetal
 `coe setup` importe Steam, le jeu et les sauvegardes depuis un wrapper Porting Kit existant
 (chemin `OLD_PREFIX` en tête de `scripts/coe`). Sans wrapper existant, il faut installer
 Steam pour Windows dans le prefix et y télécharger le jeu.
+
+## DMG à partager
+
+```bash
+scripts/make-dmg.sh 1.0        # -> dist/ClairObscurMac-1.0.dmg (~185 Mo)
+```
+
+Le DMG contient « Clair Obscur.app » (notre Wine + le lanceur), un Lisez-moi et les sources et
+licences. **Pas de D3DMetal** : au premier lancement, l'app guide le joueur pour le télécharger
+chez Apple, puis installe Steam depuis le site de Valve. Elle choisit le profil selon le GPU
+(`air` pour les petits GPU, `beau` pour les Pro/Max) et prévient sur M1 (pas de Nanite).
+Les données vont dans `~/Library/Application Support/ClairObscurMac`.
+
+Pour installer **son propre** jeu sur un autre Mac sans retélécharger ni se reconnecter à Steam :
+
+```bash
+scripts/preparer-transfert.sh /Volumes/<disque>   # image chiffrée ClairObscurPrive (mot de passe)
+```
+
+Sur l'autre Mac : ouvrir l'image (mot de passe), puis lancer l'app : elle importe le jeu, les
+sauvegardes, la session Steam et D3DMetal. Supprimer l'image ensuite : elle contient la session.
 
 ## Ce qu'on a appris en chemin
 

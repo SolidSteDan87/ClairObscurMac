@@ -1,0 +1,46 @@
+CLAIR OBSCUR SUR MAC
+====================
+
+Lance la version Steam Windows de « Clair Obscur: Expedition 33 » sur un Mac Apple Silicon,
+avec un Wine compilé maison et le traducteur DirectX 12 -> Metal d'Apple (D3DMetal).
+Projet : https://github.com/SolidSteDan87/ClairObscurMac
+
+Il te faut
+----------
+- Un Mac Apple Silicon sous macOS 27. M2 ou plus récent fortement conseillé : sur M1, le GPU
+  ne peut pas faire tourner Nanite, et une partie du décor s'affiche très simplifiée (fleurs
+  carrées, fenêtres sans cadre).
+- Rosetta (Terminal : softwareupdate --install-rosetta).
+- Un identifiant Apple (gratuit) pour télécharger D3DMetal chez Apple.
+- Le jeu, acheté sur Steam. Environ 60 Go libres.
+
+Installation
+------------
+1. Glisse « Clair Obscur » dans le dossier Applications.
+2. Premier lancement : clic droit sur l'app -> Ouvrir -> Ouvrir. L'app n'est pas signée par un
+   développeur Apple payant, donc macOS demande cette confirmation une fois.
+   Si macOS refuse quand même : Réglages Système -> Confidentialité et sécurité -> « Ouvrir quand même ».
+3. L'app te guide : téléchargement de D3DMetal chez Apple, puis installation de Steam.
+4. Connecte-toi à Steam, installe le jeu, puis relance l'app : le jeu démarre.
+
+Profils graphiques
+------------------
+Choisi automatiquement au premier lancement : « air » sur les petits GPU (MacBook Air,
+puces de base), « beau » sur les Pro/Max. Pour changer, édite
+~/Library/Application Support/ClairObscurMac/config/coe.conf (DEFAULT_PROFILE=) :
+  beau     le plus beau (Épique), ~30 FPS sur M2 Max
+  fluide   ~57 FPS sur M2 Max, éclairage Lumen gardé
+  fps-max  ~67 FPS sur M2 Max, éclairage global simplifié
+  air      réglages bas pour MacBook Air
+
+Problème connu
+--------------
+La fenêtre de connexion de Steam peut rester noire sous Wine. C'est en cours de correction :
+voir la page du projet pour l'état actuel.
+
+Où sont les données ?
+---------------------
+~/Library/Application Support/ClairObscurMac : Wine, environnement Windows (Steam, jeu,
+sauvegardes), réglages et journaux (logs/). Supprimer ce dossier désinstalle tout.
+
+Ce que l'app ne contient pas : D3DMetal (Apple), le jeu, Steam, aucune donnée personnelle.

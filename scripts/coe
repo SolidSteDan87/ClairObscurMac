@@ -2,7 +2,7 @@
 # coe — lanceur maison pour Clair Obscur: Expedition 33 sur Mac.
 #
 #   coe install-d3dmetal <GPTK.dmg | dossier>   installe D3DMetal d'Apple dans notre Wine
-#   coe setup                                   crée le prefix et y clone Steam, le jeu et les sauvegardes
+#   coe setup                                   crée le prefix ; importe Steam/jeu/sauvegardes, sinon installe Steam
 #   coe steam                                   lance Steam seul (première connexion)
 #   coe play [--hud] [--profile NOM] [--env K=V]  lance le jeu (--hud : compteur + mesures)
 #   coe kill                                    arrête tout ce qui tourne dans le prefix
@@ -10,11 +10,16 @@
 #   coe status                                  résumé de l'installation
 set -euo pipefail
 
-ROOT=${0:A:h:h}
+# Dossier des données (Wine, prefix, réglages, journaux). Dans l'app « Clair Obscur »,
+# COE_ROOT pointe vers ~/Library/Application Support/ClairObscurMac.
+ROOT=${COE_ROOT:-${0:A:h:h}}
 WINE_DIST=$ROOT/dist/wine
 PREFIX=$ROOT/prefix
 APPID=1903340
-OLD_PREFIX="/Applications/Steambuild 32 64bit Metal.app/Contents/SharedSupport/prefix"
+# Import d'un ancien wrapper (Steam, jeu, sauvegardes, session) : uniquement si
+# IMPORT_PREFIX est défini dans config/coe.conf (jamais par défaut dans l'app partagée).
+[[ -f $ROOT/config/coe.conf ]] && source $ROOT/config/coe.conf
+OLD_PREFIX=${IMPORT_PREFIX:-/nonexistent}
 OLD_USER=Wineskin
 
 STEAM_DIR="$PREFIX/drive_c/Program Files (x86)/Steam"
@@ -95,6 +100,10 @@ cmd_install_d3dmetal() {
     [[ -f $target && ! -f $backup/${dll:t} ]] && cp -p $target $backup/
   done
   ditto "$redist" "$WINE_DIST/lib"
+  # Copie de côté, pour réappliquer D3DMetal si notre Wine est remplacé (mise à jour de l'app)
+  if [[ ${redist:A} != ${ROOT:A}/d3dmetal/redist/lib ]]; then
+    mkdir -p $ROOT/d3dmetal/redist && ditto "$redist" $ROOT/d3dmetal/redist/lib
+  fi
 
   # MetalFX : D3DMetal convertit les appels DLSS du jeu en MetalFX (Read Me d'Apple).
   local unix_dir=$WINE_DIST/lib/wine/x86_64-unix win_dir=$WINE_DIST/lib/wine/x86_64-windows
@@ -111,9 +120,18 @@ cmd_install_d3dmetal() {
     info "Mise à jour du prefix existant pour D3DMetal"
     wine_env
     wine wineboot -u
-    wineserver -w
+    remove_steam_autostart
+    # Arrêt de tout ce que la mise à jour a démarré (dont un éventuel Steam automatique)
+    wineserver -k 2>/dev/null || true
+    wineserver -w 2>/dev/null || true
     install_metalfx_dlls
   fi
+}
+
+# L'installeur de Steam l'inscrit au démarrage de Windows (« steam.exe -silent ») : ce Steam
+# lancé tout seul bloquerait wineserver -w et empêcherait -applaunch d'atteindre le jeu.
+remove_steam_autostart() {
+  wine reg delete 'HKCU\Software\Microsoft\Windows\CurrentVersion\Run' /v Steam /f >/dev/null 2>&1 || true
 }
 
 # nvngx.dll (DLSS -> MetalFX) et nvapi64.dll doivent aussi être dans system32.
@@ -139,13 +157,25 @@ cmd_setup() {
     install_metalfx_dlls
   fi
 
-  [[ -d $OLD_PREFIX ]] || fail "Ancien wrapper introuvable : $OLD_PREFIX"
-
-  if [[ ! -d $STEAM_DIR ]]; then
+  if [[ ! -d $STEAM_DIR && -d $OLD_PREFIX ]]; then
     info "Clone APFS de Steam et du jeu (instantané, aucun espace disque en plus)"
     mkdir -p "${STEAM_DIR:h}"
     cp -cR "$OLD_PREFIX/drive_c/Program Files (x86)/Steam" "${STEAM_DIR:h}/"
+  elif [[ ! -d $STEAM_DIR ]]; then
+    info "Installation de Steam pour Windows (installeur officiel de Valve)"
+    mkdir -p $ROOT/cache
+    curl -fsSL --retry 3 -o $ROOT/cache/SteamSetup.exe \
+        https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe \
+      || curl -fsSL --retry 3 -o $ROOT/cache/SteamSetup.exe \
+        https://cdn.cloudflare.steamstatic.com/client/installer/SteamSetup.exe \
+      || fail "téléchargement de l'installeur Steam impossible"
+    wine $ROOT/cache/SteamSetup.exe /S
+    remove_steam_autostart
+    wineserver -k 2>/dev/null || true
+    wineserver -w 2>/dev/null || true
+    [[ -f $STEAM_DIR/steam.exe ]] || fail "Steam ne s'est pas installé (voir logs/)"
   fi
+  [[ -d $OLD_PREFIX ]] || { info "Prefix prêt : $PREFIX"; return 0 }
 
   local old_local="$OLD_PREFIX/drive_c/users/$OLD_USER/AppData/Local"
   local new_local=$(local_appdata)

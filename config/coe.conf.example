@@ -9,4 +9,4 @@ WIN_USERNAME=ton_nom_utilisateur
 #   fps-max  : le plus de FPS (Nanite gardé, éclairage global en espace écran)
 #   fluide   : Nanite + éclairage global Lumen, un peu moins de FPS
 #   equilibre: réglages du jeu sans modification
-DEFAULT_PROFILE=fps-max
+DEFAULT_PROFILE=beau

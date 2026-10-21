@@ -1,0 +1,29 @@
+SOURCES ET LICENCES
+===================
+
+Scripts et lanceur (coe, app) : licence MIT.
+Code : https://github.com/SolidSteDan87/ClairObscurMac
+
+Logiciels libres compilés et inclus dans l'app, avec leurs sources exactes :
+
+- Wine 11.0, sources CrossOver 26.3.0 de CodeWeavers — GNU LGPL 2.1 ou ultérieure
+  https://media.codeweavers.com/pub/crossover/source/crossover-sources-26.3.0.tar.gz
+  + les correctifs du dossier « patches » ci-joint (aussi sur la page du projet)
+  + les scripts de compilation scripts/build-deps.sh et scripts/build-wine.sh du projet
+- FreeType 2.13.3 — licence FreeType (FTL) ou GNU GPL 2
+  https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz
+- GnuTLS 3.8.9 — GNU LGPL 2.1 ou ultérieure
+  https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.9.tar.xz
+- Nettle 3.10.1 — GNU LGPL 3 ou GNU GPL 2
+  https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz
+- GMP 6.3.0 — GNU LGPL 3 ou GNU GPL 2
+  https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
+- SDL 2.32.8 — licence zlib
+  https://github.com/libsdl-org/SDL/releases/download/release-2.32.8/SDL2-2.32.8.tar.gz
+
+Non inclus, à obtenir par chaque utilisateur :
+- D3DMetal / Game Porting Toolkit : logiciel d'Apple, téléchargé sur developer.apple.com.
+- Steam : installé depuis le site officiel de Valve au premier lancement.
+- Clair Obscur: Expedition 33 : jeu de Sandfall Interactive, à acheter sur Steam.
+
+Ce projet n'est affilié ni à Apple, ni à CodeWeavers, ni à Valve, ni à Sandfall Interactive.
