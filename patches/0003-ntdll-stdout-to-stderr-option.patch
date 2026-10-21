@@ -1,0 +1,14 @@
+--- dlls/ntdll/unix/process.c.orig
++++ dlls/ntdll/unix/process.c
+@@ -815,6 +815,11 @@
+ {
+     int fd = -1;
+ 
++    /* ClairObscurMac : avec COE_STDOUT_TO_STDERR, la sortie standard d'un processus
++     * lancé sans console (ex. un jeu lancé par Steam) va vers stderr au lieu de
++     * /dev/null, pour récupérer les mesures du HUD Metal (MTL_HUD_LOG_ENABLED). */
++    if (stdout_fd == -1 && getenv( "COE_STDOUT_TO_STDERR" )) stdout_fd = 2;
++
+     if (stdin_fd == -1 || stdout_fd == -1)
+     {
+         fd = open( "/dev/null", O_RDWR );

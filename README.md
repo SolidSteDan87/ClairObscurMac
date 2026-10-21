@@ -12,13 +12,15 @@ Testé sur macOS 27.0.1 : MacBook Pro **M1 Max** et **M2 Max**.
 |---|---|
 | `scripts/build-deps.sh` | compile FreeType, GnuTLS (+ nettle, gmp) et SDL2 en x86_64 |
 | `scripts/build-wine.sh` | compile Wine (sources CrossOver 26.3.0, base Wine 11.0) en x86_64 + 32 bits (wow64) |
-| `patches/` | 2 correctifs Wine nécessaires pour compiler sur macOS 27 |
+| `patches/` | 3 correctifs Wine : 2 pour compiler sur macOS 27, 1 pour mesurer les FPS |
 | `scripts/coe` | le lanceur : installe D3DMetal, crée l'environnement Windows, lance Steam et le jeu |
-| `config/profiles/` | profils `Engine.ini` du jeu (réglages Unreal Engine) |
+| `config/profiles/` | profils `Engine.ini` du jeu : `fps-max` (défaut), `fluide`, `equilibre` + profils de diagnostic |
 | `Clair Obscur.app` | app à double-cliquer qui lance le jeu |
 | `scripts/import-steam-registry.py` | reprend la connexion Steam d'un ancien environnement Wine |
 | `scripts/exporter.sh` | copie l'installation complète vers un disque externe (pour un autre Mac) |
 | `scripts/analyse-video.sh` | découpe une vidéo de jeu en images pour repérer les bugs graphiques |
+| `scripts/bench-m2.sh` | mesure les FPS d'un profil sur un autre Mac en SSH (relance, attente, 30 s de mesure) |
+| `PERFORMANCES.md` | toutes les mesures de FPS et ce qu'on en retient |
 
 **Ce dépôt ne contient rien d'Apple ni du jeu.** D3DMetal se télécharge sur le site développeur
 d'Apple (gratuit, identifiant Apple requis), et le jeu s'achète sur Steam.
@@ -39,7 +41,16 @@ scripts/build-wine.sh          # ~30 min
 scripts/coe install-d3dmetal ~/Downloads/Evaluation_environment_for_Windows_games_4.0_beta_3.dmg
 cp config/coe.conf.example config/coe.conf   # puis y mettre son nom d'utilisateur
 scripts/coe setup              # crée l'environnement Windows
-scripts/coe play --hud         # lance le jeu, avec le compteur de FPS Metal
+scripts/coe play               # lance le jeu (profil par défaut : fps-max)
+```
+
+Ou double-clic sur `Clair Obscur.app`. Options utiles :
+
+```bash
+scripts/coe play --profile fluide       # Nanite + éclairage Lumen, un peu moins de FPS
+scripts/coe play --hud                  # compteur Metal + mesures dans logs/play.log
+scripts/coe fps 30                      # FPS moyens, 1 % bas et temps GPU des 30 dernières s
+scripts/coe play --env D3DM_MTL4=0      # essayer une option de D3DMetal
 ```
 
 `coe setup` importe Steam, le jeu et les sauvegardes depuis un wrapper Porting Kit existant
@@ -73,7 +84,14 @@ Preuve : `r.Nanite=0` ne change ni l'image ni les FPS sur M1. **Aucun réglage n
 peut corriger ça sur M1.** Sur M2 Max, les vraies fleurs s'affichent.
 
 **MetalFX** : avec `D3DM_ENABLE_METALFX=1` (activé par `coe`), D3DMetal convertit le DLSS du jeu
-en MetalFX, l'upscaler d'Apple. Choisir DLSS dans les options graphiques du jeu.
+en MetalFX, l'upscaler d'Apple. Les profils `fluide` et `fps-max` coupent FSR 4 et activent DLSS.
+
+**FPS sur M2 Max** (marché de Lumière, préréglage Moyen) : 51 FPS au départ, **57 avec `fluide`,
+67 avec `fps-max`**, Nanite toujours actif. Détails et méthode dans `PERFORMANCES.md`.
+
+**Mesurer les FPS d'un jeu lancé par Steam** : Steam donne au jeu une sortie standard vers
+`/dev/null`, là où le HUD Metal écrit ses mesures. Le correctif `0003` la redirige vers le journal
+quand `COE_STDOUT_TO_STDERR` est défini (fait par `coe play --hud`).
 
 ## Problèmes connus
 

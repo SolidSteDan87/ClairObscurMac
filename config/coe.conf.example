@@ -3,3 +3,9 @@
 # Nom d'utilisateur présenté à Windows/Steam. Wine en dérive la clé de chiffrement
 # du jeton de connexion Steam : il doit rester le même sur tous les Mac.
 WIN_USERNAME=ton_nom_utilisateur
+
+# Profil Engine.ini utilisé par défaut (config/profiles/<nom>.ini) :
+#   fps-max  : le plus de FPS (Nanite gardé, éclairage global en espace écran)
+#   fluide   : Nanite + éclairage global Lumen, un peu moins de FPS
+#   equilibre: réglages du jeu sans modification
+DEFAULT_PROFILE=fps-max

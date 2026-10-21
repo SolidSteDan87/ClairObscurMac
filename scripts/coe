@@ -4,8 +4,9 @@
 #   coe install-d3dmetal <GPTK.dmg | dossier>   installe D3DMetal d'Apple dans notre Wine
 #   coe setup                                   crée le prefix et y clone Steam, le jeu et les sauvegardes
 #   coe steam                                   lance Steam seul (première connexion)
-#   coe play [--hud] [--profile NOM]            lance le jeu
+#   coe play [--hud] [--profile NOM] [--env K=V]  lance le jeu (--hud : compteur + mesures)
 #   coe kill                                    arrête tout ce qui tourne dans le prefix
+#   coe fps [SECONDES]                          FPS et temps GPU des N dernières secondes (après --hud)
 #   coe status                                  résumé de l'installation
 set -euo pipefail
 
@@ -182,16 +183,32 @@ cmd_steam() {
 }
 
 cmd_play() {
-  local profile=equilibre
+  [[ -f $ROOT/config/coe.conf ]] && source $ROOT/config/coe.conf
+  local profile=${DEFAULT_PROFILE:-equilibre} hud=0
+  local -a extra_env
   while (( $# )); do
     case $1 in
-      --hud) export MTL_HUD_ENABLED=1 ;;
+      --hud) hud=1 ;;
       --profile) profile=$2; shift ;;
+      --env) extra_env+=($2); shift ;;
       *) fail "option inconnue : $1" ;;
     esac
     shift
   done
   wine_env
+  if (( hud )); then
+    # Compteur Metal + une ligne de mesures par seconde dans logs/play.log
+    # + détection des goulets propres aux jeux traduits (insights).
+    export MTL_HUD_ENABLED=1 MTL_HUD_LOG_ENABLED=1 MTL_HUD_INSIGHTS_ENABLED=1
+    export MTL_HUD_REPORT_URL=$ROOT/logs/hud
+    # Notre correctif Wine 0003 : la sortie standard du jeu (où le HUD écrit ses
+    # mesures) va dans logs/play.log au lieu de /dev/null.
+    export COE_STDOUT_TO_STDERR=1
+    mkdir -p $ROOT/logs/hud
+  fi
+  # Variables passées à la main pour les essais (--env D3DM_MTL4=0 ...),
+  # appliquées en dernier pour pouvoir tout remplacer.
+  for kv in $extra_env; do export $kv; info "env : $kv"; done
   apply_profile $profile
   # Sous Wine, une 2e instance de Steam ne transmet pas -applaunch à la 1re :
   # on redémarre Steam directement avec l'ordre de lancer le jeu.
@@ -204,6 +221,23 @@ cmd_play() {
   wine "$(steam_exe)" $STEAM_FLAGS -silent -applaunch $APPID \
     &>! $ROOT/logs/play.log &
   info "Jeu lancé via Steam (journal : logs/play.log)"
+}
+
+# Statistiques des N dernières secondes, d'après les lignes du HUD Metal
+# (« metal-HUD: n°image, mém. GPU, mém. process, [intervalle ms, GPU ms]... »).
+cmd_fps() {
+  local secs=${1:-30} log=$ROOT/logs/play.log
+  local pairs=$(grep -a 'metal-HUD:' $log | tail -n $secs | sed 's/.*metal-HUD: //' \
+    | awk -F, '{ for (i = 4; i < NF; i += 2) print $i, $(i+1) }')
+  [[ -n $pairs ]] || fail "aucune mesure : lancer avec « coe play --hud »"
+  local p1=$(print -r -- $pairs | awk '{print $1}' | sort -rn \
+    | awk '{ v[NR] = $1 } END { print v[int(NR * 0.01) + 1] }')
+  print -r -- $pairs | awk -v secs=$secs -v p1=$p1 '
+    { n++; iv += $1; gpu += $2; if ($2 > gmax) gmax = $2 }
+    END {
+      printf "%d images sur %d s : %.1f FPS moyens, 1%% bas %.1f FPS, GPU %.1f ms (max %.1f ms)\n",
+        n, secs, 1000 * n / iv, 1000 / p1, gpu / n, gmax
+    }'
 }
 
 cmd_kill() {
@@ -226,6 +260,7 @@ case ${1:-} in
   steam)  cmd_steam ;;
   play)   shift; cmd_play "$@" ;;
   kill)   cmd_kill ;;
+  fps)    shift; cmd_fps "$@" ;;
   status) cmd_status ;;
   *) sed -n '2,10p' $0 | sed 's/^# \{0,1\}//' ;;
 esac
