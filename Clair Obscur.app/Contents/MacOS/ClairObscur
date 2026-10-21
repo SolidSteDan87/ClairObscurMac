@@ -1,0 +1,5 @@
+#!/bin/zsh
+# Lance Clair Obscur: Expedition 33 via notre Wine (scripts/coe), sans terminal.
+ROOT=${0:A:h:h:h:h}
+mkdir -p $ROOT/logs
+exec $ROOT/scripts/coe play "$@" >> $ROOT/logs/app.log 2>&1

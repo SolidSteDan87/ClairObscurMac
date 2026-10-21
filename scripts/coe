@@ -1,0 +1,231 @@
+#!/bin/zsh
+# coe — lanceur maison pour Clair Obscur: Expedition 33 sur Mac.
+#
+#   coe install-d3dmetal <GPTK.dmg | dossier>   installe D3DMetal d'Apple dans notre Wine
+#   coe setup                                   crée le prefix et y clone Steam, le jeu et les sauvegardes
+#   coe steam                                   lance Steam seul (première connexion)
+#   coe play [--hud] [--profile NOM]            lance le jeu
+#   coe kill                                    arrête tout ce qui tourne dans le prefix
+#   coe status                                  résumé de l'installation
+set -euo pipefail
+
+ROOT=${0:A:h:h}
+WINE_DIST=$ROOT/dist/wine
+PREFIX=$ROOT/prefix
+APPID=1903340
+OLD_PREFIX="/Applications/Steambuild 32 64bit Metal.app/Contents/SharedSupport/prefix"
+OLD_USER=Wineskin
+
+STEAM_DIR="$PREFIX/drive_c/Program Files (x86)/Steam"
+GAME_DIR="$STEAM_DIR/steamapps/common/Expedition 33"
+PROFILES=$ROOT/config/profiles
+mkdir -p $ROOT/logs
+
+info() { print -P "%F{cyan}==>%f $*" }
+fail() { print -P "%F{red}Erreur :%f $*" >&2; exit 1 }
+
+wine_env() {
+  [[ -x $WINE_DIST/bin/wine ]] || fail "Wine n'est pas compilé (scripts/build-wine.sh)."
+  arch -x86_64 /usr/bin/true 2>/dev/null \
+    || fail "Rosetta n'est pas installé sur ce Mac (softwareupdate --install-rosetta)."
+  [[ -f $ROOT/config/coe.conf ]] && source $ROOT/config/coe.conf
+  # Même nom d'utilisateur Windows sur tous les Mac (voir config/coe.conf).
+  export USER=${WIN_USERNAME:-$USER}
+  export WINEPREFIX=$PREFIX
+  export PATH="$WINE_DIST/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  export DYLD_FALLBACK_LIBRARY_PATH="$WINE_DIST/lib:$WINE_DIST/lib/external:/usr/lib"
+  export WINEDEBUG=${WINEDEBUG:--all}
+  # Synchronisation via les sémaphores Mach : moins de CPU gaspillé que wineserver.
+  export WINEMSYNC=1
+  # Ce Wine (CodeWeavers) répond « crossover » à GetUserName, sauf avec cette variable.
+  # Le vrai nom est nécessaire : Wine dérive la clé de CryptProtectData du nom
+  # d'utilisateur, et Steam y chiffre son jeton de connexion.
+  export CX_REPORT_REAL_USERNAME=1
+  # Annonce l'ordonnancement GPU matériel au jeu (chemin prévu pour D3DMetal).
+  export CX_ACTIVE_GRAPHICS_BACKEND=d3dmetal
+  export MTL_HUD_ENABLED=${MTL_HUD_ENABLED:-0}
+  # DLSS du jeu -> MetalFX (upscaler d'Apple accéléré par la puce)
+  export D3DM_ENABLE_METALFX=${D3DM_ENABLE_METALFX:-1}
+  # Ni Steam ni le jeu n'utilisent .NET (Mono) ou le moteur web Gecko :
+  # on évite leurs fenêtres d'installation qui bloquent wineboot.
+  export WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-mscoree,mshtml=}
+}
+
+# Dossier de profil Windows du prefix (C:\users\crossover avec ce Wine) : on lit
+# %USERPROFILE% et pas %USERNAME%, qui vaut $USER avec CX_REPORT_REAL_USERNAME.
+# Demandé à Wine une fois, puis mémorisé.
+win_user() {
+  local f=$PREFIX/.coe-winuser
+  if [[ ! -s $f ]]; then
+    wine cmd /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r' | sed 's/.*\\//' > $f
+  fi
+  print -r -- "$(<$f)"
+}
+local_appdata() { print -r -- "$PREFIX/drive_c/users/$(win_user)/AppData/Local" }
+game_config()   { print -r -- "$(local_appdata)/Sandfall/Saved/Config/Windows" }
+
+d3dmetal_installed() { [[ -d $WINE_DIST/lib/external/D3DMetal.framework ]] }
+
+cmd_install_d3dmetal() {
+  local src=${1:-}
+  [[ -n $src ]] || fail "usage : coe install-d3dmetal <Game_Porting_Toolkit.dmg | dossier>"
+  local mounted=""
+  if [[ $src == *.dmg ]]; then
+    info "Montage de ${src:t}"
+    mounted=$(hdiutil attach -nobrowse -readonly "$src" | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)
+    src=$mounted
+  fi
+  # Le DMG de GPTK contient un DMG imbriqué « Evaluation environment ».
+  local nested=$(find "$src" -maxdepth 2 -iname "Evaluation*environment*.dmg" | head -1)
+  local inner=""
+  if [[ -n $nested ]]; then
+    inner=$(hdiutil attach -nobrowse -readonly "$nested" | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)
+    src=$inner
+  fi
+  local redist=$(find "$src" -maxdepth 3 -type d -path "*redist/lib" | head -1)
+  [[ -n $redist ]] || fail "Pas de dossier redist/lib trouvé dans $src"
+
+  info "D3DMetal trouvé : $redist"
+  # Sauvegarde des DLL Wine qui vont être remplacées, pour pouvoir revenir en arrière.
+  local backup=$WINE_DIST/lib/wine/builtin-backup
+  mkdir -p $backup
+  for dll in $redist/wine/x86_64-windows/*(N); do
+    local target=$WINE_DIST/lib/wine/x86_64-windows/${dll:t}
+    [[ -f $target && ! -f $backup/${dll:t} ]] && cp -p $target $backup/
+  done
+  ditto "$redist" "$WINE_DIST/lib"
+
+  # MetalFX : D3DMetal convertit les appels DLSS du jeu en MetalFX (Read Me d'Apple).
+  local unix_dir=$WINE_DIST/lib/wine/x86_64-unix win_dir=$WINE_DIST/lib/wine/x86_64-windows
+  [[ -e $unix_dir/nvngx-on-metalfx.so ]] && mv -f $unix_dir/nvngx-on-metalfx.so $unix_dir/nvngx.so
+  [[ -e $win_dir/nvngx-on-metalfx.dll ]] && mv -f $win_dir/nvngx-on-metalfx.dll $win_dir/nvngx.dll
+
+  info "D3DMetal installé, version $(plutil -extract CFBundleShortVersionString raw \
+    $WINE_DIST/lib/external/D3DMetal.framework/Versions/A/Resources/Info.plist 2>/dev/null)"
+
+  [[ -n $inner ]] && hdiutil detach -quiet "$inner" || true
+  [[ -n $mounted ]] && hdiutil detach -quiet "$mounted" || true
+
+  if [[ -f $PREFIX/system.reg ]]; then
+    info "Mise à jour du prefix existant pour D3DMetal"
+    wine_env
+    wine wineboot -u
+    wineserver -w
+    install_metalfx_dlls
+  fi
+}
+
+# nvngx.dll (DLSS -> MetalFX) et nvapi64.dll doivent aussi être dans system32.
+install_metalfx_dlls() {
+  local win_dir=$WINE_DIST/lib/wine/x86_64-windows sys32=$PREFIX/drive_c/windows/system32
+  [[ -f $win_dir/nvngx.dll && -d $sys32 ]] || return 0
+  cp -f $win_dir/nvngx.dll $win_dir/nvapi64.dll $sys32/
+  info "MetalFX : nvngx.dll et nvapi64.dll copiés dans system32"
+}
+
+cmd_setup() {
+  wine_env
+  d3dmetal_installed || info "D3DMetal pas encore installé : Steam marchera, le jeu non (coe install-d3dmetal <GPTK.dmg>)"
+
+  if [[ ! -f $PREFIX/system.reg ]]; then
+    info "Création du prefix Windows"
+    wine wineboot --init
+    wineserver -w
+    # Windows 10, et rendu Retina désactivé (le jeu gère sa propre résolution).
+    wine reg add 'HKCU\Software\Wine' /v Version /d win10 /f
+    wine reg add 'HKCU\Software\Wine\Mac Driver' /v RetinaMode /d n /f
+    wineserver -w
+    install_metalfx_dlls
+  fi
+
+  [[ -d $OLD_PREFIX ]] || fail "Ancien wrapper introuvable : $OLD_PREFIX"
+
+  if [[ ! -d $STEAM_DIR ]]; then
+    info "Clone APFS de Steam et du jeu (instantané, aucun espace disque en plus)"
+    mkdir -p "${STEAM_DIR:h}"
+    cp -cR "$OLD_PREFIX/drive_c/Program Files (x86)/Steam" "${STEAM_DIR:h}/"
+  fi
+
+  local old_local="$OLD_PREFIX/drive_c/users/$OLD_USER/AppData/Local"
+  local new_local=$(local_appdata)
+  if [[ ! -d $new_local/Sandfall ]]; then
+    info "Copie des sauvegardes, réglages et cache de shaders du jeu"
+    mkdir -p $new_local
+    cp -cR "$old_local/Sandfall" "$new_local/"
+  fi
+  if [[ -d $old_local/Steam && ! -d $new_local/Steam ]]; then
+    cp -cR "$old_local/Steam" "$new_local/"
+  fi
+  info "Prefix prêt : $PREFIX"
+}
+
+apply_profile() {
+  local name=$1
+  local file=$PROFILES/$name.ini
+  [[ -f $file ]] || fail "Profil inconnu : $name (voir $PROFILES)"
+  local dir=$(game_config)
+  mkdir -p "$dir"
+  cp "$file" "$dir/Engine.ini"
+  info "Profil « $name » appliqué"
+}
+
+steam_exe() { print -r -- 'C:\Program Files (x86)\Steam\steam.exe' }
+
+# Options de l'interface web de Steam (CEF) qui marchent sous Wine sur ce Mac :
+# rendu dans le processus principal et en logiciel (le jeu, lui, garde D3DMetal).
+STEAM_FLAGS=(-no-cef-sandbox -cef-in-process-gpu -cef-disable-gpu)
+
+cmd_steam() {
+  wine_env
+  wine "$(steam_exe)" $STEAM_FLAGS &>! $ROOT/logs/steam.log &
+  info "Steam lancé (journal : logs/steam.log)"
+}
+
+cmd_play() {
+  local profile=equilibre
+  while (( $# )); do
+    case $1 in
+      --hud) export MTL_HUD_ENABLED=1 ;;
+      --profile) profile=$2; shift ;;
+      *) fail "option inconnue : $1" ;;
+    esac
+    shift
+  done
+  wine_env
+  apply_profile $profile
+  # Sous Wine, une 2e instance de Steam ne transmet pas -applaunch à la 1re :
+  # on redémarre Steam directement avec l'ordre de lancer le jeu.
+  # (on ne regarde que NOTRE Wine : un autre wrapper peut avoir son propre Steam)
+  if pgrep -f "$WINE_DIST/lib/wine/" >/dev/null; then
+    info "Redémarrage de Steam pour lancer le jeu"
+    wineserver -k 2>/dev/null || true
+    wineserver -w 2>/dev/null || true
+  fi
+  wine "$(steam_exe)" $STEAM_FLAGS -silent -applaunch $APPID \
+    &>! $ROOT/logs/play.log &
+  info "Jeu lancé via Steam (journal : logs/play.log)"
+}
+
+cmd_kill() {
+  wine_env
+  wineserver -k || true
+  info "Tout est arrêté."
+}
+
+cmd_status() {
+  print "Wine     : $([[ -x $WINE_DIST/bin/wine ]] && $WINE_DIST/bin/wine --version || print 'pas compilé')"
+  print "D3DMetal : $(d3dmetal_installed && print installé || print absent)"
+  print "Prefix   : $([[ -f $PREFIX/system.reg ]] && print prêt || print absent)"
+  print "Jeu      : $([[ -d $GAME_DIR ]] && print présent || print absent)"
+  print "Profils  : ${(j:, :)${(@)${(f)$(ls $PROFILES 2>/dev/null)}%.ini}}"
+}
+
+case ${1:-} in
+  install-d3dmetal) shift; cmd_install_d3dmetal "$@" ;;
+  setup)  cmd_setup ;;
+  steam)  cmd_steam ;;
+  play)   shift; cmd_play "$@" ;;
+  kill)   cmd_kill ;;
+  status) cmd_status ;;
+  *) sed -n '2,10p' $0 | sed 's/^# \{0,1\}//' ;;
+esac

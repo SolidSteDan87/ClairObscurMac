@@ -1,0 +1,16 @@
+# Produits de compilation et téléchargements (recréés par les scripts)
+/src/
+/deps/
+/build/
+/dist/
+
+# Environnement Windows : Steam, jeu, sauvegardes, données de connexion
+/prefix/
+
+# Données locales : journaux, analyses vidéo, réglages personnels
+/logs/
+/analyse/
+/config/coe.conf
+.metadata_never_index
+.DS_Store
+_CodeSignature/

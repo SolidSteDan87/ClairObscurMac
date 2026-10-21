@@ -1,0 +1,5 @@
+# Réglages du lanceur coe (lus à chaque lancement).
+
+# Nom d'utilisateur présenté à Windows/Steam. Wine en dérive la clé de chiffrement
+# du jeton de connexion Steam : il doit rester le même sur tous les Mac.
+WIN_USERNAME=ton_nom_utilisateur
