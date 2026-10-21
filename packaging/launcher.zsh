@@ -54,8 +54,14 @@ fi
 # 2b. Import d'une image chiffrée « ClairObscurPrive » préparée sur un autre de tes Mac
 #     (scripts/preparer-transfert.sh) : jeu, sauvegardes, session Steam, D3DMetal.
 IMP=/Volumes/ClairObscurPrive
-if [[ ! -d $COE_ROOT/prefix && -d $IMP/prefix ]]; then
+GAME="Program Files (x86)/Steam/steamapps/common/Expedition 33"
+if [[ -d $IMP/prefix && ! -d "$COE_ROOT/prefix/drive_c/$GAME" ]]; then
   message "Image « ClairObscurPrive » détectée : import du jeu, de tes sauvegardes et de ta session Steam. Environ 10 minutes pour 45 Go, ne ferme pas l'app."
+  # Un environnement sans le jeu (ex. Steam neuf installé avant d'ouvrir l'image) est mis de côté
+  if [[ -d $COE_ROOT/prefix ]]; then
+    $COE kill >/dev/null 2>&1
+    mv "$COE_ROOT/prefix" "$COE_ROOT/prefix-sans-jeu-$(date +%Y%m%d-%H%M%S)"
+  fi
   rsync -a "$IMP/prefix/" "$COE_ROOT/prefix/" || erreur "Import impossible (voir le journal)."
   w=$(grep '^WIN_USERNAME=' $IMP/config/coe.conf 2>/dev/null)
   [[ -n $w ]] && sed -i '' "s/^WIN_USERNAME=.*/$w/" "$COE_ROOT/config/coe.conf"
